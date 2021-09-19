@@ -11,6 +11,7 @@ require (
 	github.com/apparentlymart/go-cidr v1.1.0
 	github.com/aws/aws-sdk-go v1.40.41
 	github.com/coredns/caddy v1.1.1
+	github.com/dgraph-io/badger/v3 v3.2103.1 // indirect
 	github.com/dnstap/golang-dnstap v0.4.0
 	github.com/farsightsec/golang-framestream v0.3.0
 	github.com/golang/protobuf v1.5.2

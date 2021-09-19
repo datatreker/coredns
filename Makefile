@@ -8,6 +8,12 @@ GOPATH?=$(HOME)/go
 MAKEPWD:=$(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 CGO_ENABLED:=0
 
+.ONESHELL:
+APP_PROFILE ?= dev
+ifdef $$APP_PROFILE
+APP_PROFILE := $$APP_PROFILE
+endif
+
 .PHONY: all
 all: coredns
 
@@ -33,3 +39,8 @@ pb:
 clean:
 	go clean
 	rm -f coredns
+
+.PHONY: run
+run:
+	go run coredns.go -conf deployment/$(APP_PROFILE)/Corefile
+	@echo "coredns started."
