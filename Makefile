@@ -26,10 +26,12 @@ check: core/plugin/zplugin.go core/dnsserver/zdirectives.go
 
 core/plugin/zplugin.go core/dnsserver/zdirectives.go: plugin.cfg
 	go generate coredns.go
+	go get
 
 .PHONY: gen
 gen:
 	go generate coredns.go
+	go get
 
 .PHONY: pb
 pb:
