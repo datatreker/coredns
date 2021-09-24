@@ -8,23 +8,23 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 )
 
 const (
-	rootUrlPath      = "/ma-api/"
-	apiServerAddress = "http://127.0.0.1:9527"
+	nodeUrlPath      = "/ma/node"
+	dataUrlPath      = "/ma/data"
+	apiServerAddress = "http://124.126.76.128:31026/ma-api/analysis"
 	defaultTimeout   = time.Duration(10)
 	defaultTTL       = 300
 	defaultMimeType  = "application/json"
 )
 
 type ResolveResult struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Success bool        `json:"success"`
-	Data    interface{} `json:"data"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Success bool   `json:"success"`
+	Data    string `json:"data"`
 }
 
 type IDCodeResolver struct {
@@ -44,7 +44,14 @@ func (srv *IDCodeResolver) Close() {
 }
 
 func Support(urlPath string) bool {
-	if strings.HasPrefix(urlPath, rootUrlPath) {
+	if urlPath == nodeUrlPath || urlPath == dataUrlPath {
+		return true
+	}
+	return false
+}
+
+func isQueryNode(urlPath string) bool {
+	if urlPath == nodeUrlPath {
 		return true
 	}
 	return false
@@ -79,7 +86,30 @@ func copyHeader(dst, src http.Header) {
 
 func (srv *IDCodeResolver) Handle(w http.ResponseWriter, r *http.Request) {
 	client := createHTTPClient()
-	request, err := http.NewRequest("GET", apiServerAddress+r.URL.RequestURI(), nil)
+	url := apiServerAddress + "/ma"
+	queryType := "data"
+	if isQueryNode(r.URL.Path) {
+		url = apiServerAddress + "/nodeInfo"
+		queryType = "node"
+	}
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	key := queryType + ":" + id
+	result, _ := srv.getFromCache(key)
+	if result != nil {
+		w.Header().Set("Content-Type", defaultMimeType)
+		w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d", defaultTTL))
+		w.Header().Set("Content-Length", strconv.Itoa(len(result)))
+		w.WriteHeader(http.StatusOK)
+		w.Write(result)
+		return
+	}
+	url = fmt.Sprintf("%s?analysisUrl=%s", url, id)
+	println(fmt.Sprintf("url:%s, type:%s", url, queryType))
+	request, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
@@ -99,32 +129,34 @@ func (srv *IDCodeResolver) Handle(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(err.Error()))
 		return
 	}
+	println(string(body))
 	var resolveResult ResolveResult
-	json.Unmarshal(body, &resolveResult)
-	result, err := json.Marshal(resolveResult.Data)
+	err = json.Unmarshal(body, &resolveResult)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
 		return
 	}
+	println(fmt.Sprintf("code:%s, message:%s, success:%v, data:%v", resolveResult.Code, resolveResult.Message, resolveResult.Success, resolveResult.Data))
 	if resp.StatusCode == http.StatusOK {
+		srv.updateCache(key, []byte(resolveResult.Data))
 		w.Header().Set("Content-Type", defaultMimeType)
 		w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d", defaultTTL))
-		w.Header().Set("Content-Length", strconv.Itoa(len(result)))
+		w.Header().Set("Content-Length", strconv.Itoa(len(resolveResult.Data)))
 		w.WriteHeader(http.StatusOK)
-		w.Write(result)
+		w.Write([]byte(resolveResult.Data))
 	} else {
 		w.Header().Set("Content-Type", defaultMimeType)
-		w.Header().Set("Content-Length", strconv.Itoa(len(result)))
+		w.Header().Set("Content-Length", strconv.Itoa(len(resolveResult.Data)))
 		w.WriteHeader(resp.StatusCode)
-		w.Write(result)
+		w.Write([]byte(resolveResult.Data))
 	}
 
 }
 
 func (srv *IDCodeResolver) updateCache(key string, data []byte) error {
 	err := srv.cache.Update(func(txn *badger.Txn) error {
-		e := badger.NewEntry([]byte(key), data).WithTTL(time.Hour)
+		e := badger.NewEntry([]byte(key), data).WithTTL(time.Minute)
 		err := txn.SetEntry(e)
 		return err
 	})
