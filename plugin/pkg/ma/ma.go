@@ -139,12 +139,21 @@ func (srv *IDCodeResolver) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 	println(fmt.Sprintf("code:%s, message:%s, success:%v, data:%v", resolveResult.Code, resolveResult.Message, resolveResult.Success, resolveResult.Data))
 	if resp.StatusCode == http.StatusOK {
-		srv.updateCache(key, []byte(resolveResult.Data))
-		w.Header().Set("Content-Type", defaultMimeType)
-		w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d", defaultTTL))
-		w.Header().Set("Content-Length", strconv.Itoa(len(resolveResult.Data)))
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(resolveResult.Data))
+		statusCode := srv.resolveReturnCode(resolveResult.Code)
+		if statusCode == http.StatusOK {
+			srv.updateCache(key, []byte(resolveResult.Data))
+			w.Header().Set("Content-Type", defaultMimeType)
+			w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d", defaultTTL))
+			w.Header().Set("Content-Length", strconv.Itoa(len(resolveResult.Data)))
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(resolveResult.Data))
+		} else {
+			w.Header().Set("Content-Type", defaultMimeType)
+			w.Header().Set("Content-Length", strconv.Itoa(len(resolveResult.Data)))
+			w.WriteHeader(statusCode)
+			w.Write([]byte(resolveResult.Data))
+		}
+
 	} else {
 		w.Header().Set("Content-Type", defaultMimeType)
 		w.Header().Set("Content-Length", strconv.Itoa(len(resolveResult.Data)))
@@ -177,4 +186,19 @@ func (srv *IDCodeResolver) getFromCache(key string) ([]byte, error) {
 		return err
 	})
 	return data, err
+}
+
+func (srv *IDCodeResolver) resolveReturnCode(code string) int {
+	switch code {
+	case "200":
+		return http.StatusOK
+	case "001001":
+		return http.StatusBadRequest
+	case "200001":
+		return http.StatusBadRequest
+	case "200002":
+		return http.StatusUnauthorized
+	default:
+		return http.StatusNotFound
+	}
 }
